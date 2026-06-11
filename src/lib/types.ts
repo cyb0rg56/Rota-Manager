@@ -65,9 +65,9 @@ export interface DateRange {
 
 export interface Person {
   id: string;
-  /** Full name, e.g. "Lily Jennings". */
+  /** Full name */
   fullName: string;
-  /** Short display name used in the rota cells, e.g. "Lily J". */
+  /** Short display name used in the rota cells */
   displayName: string;
   /** Roles this person can be assigned within. */
   roles: Role[];
@@ -86,6 +86,11 @@ export interface Semester {
    * Empty string means "same as semester start".
    */
   byngStartDate: string;
+  /**
+   * BYNG term typically ends earlier; BYNG cells stay blank after this date.
+   * Empty string means "same as semester end".
+   */
+  byngEndDate: string;
 }
 
 /** A single day in the rota with its shift assignments (person ids or null). */

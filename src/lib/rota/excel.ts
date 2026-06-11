@@ -25,7 +25,7 @@ export function importFromXlsx(data: ArrayBuffer): ImportResult {
   const workbook = XLSX.read(data, { type: "array" });
   const sheetName = workbook.SheetNames[0];
   if (!sheetName) {
-    return { people: [], days: [], startDate: "", endDate: "", byngStartDate: "" };
+    return { people: [], days: [], startDate: "", endDate: "", byngStartDate: "", byngEndDate: "" };
   }
   const worksheet = workbook.Sheets[sheetName];
   const rows = XLSX.utils.sheet_to_json<string[]>(worksheet, {

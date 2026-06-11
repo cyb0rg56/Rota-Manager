@@ -53,6 +53,16 @@ function isAvailable(person: Person, date: string): boolean {
   return !isWithinRanges(date, person.leave);
 }
 
+/** Return a shuffled copy of the array (Fisher–Yates). */
+function shuffle<T>(arr: T[]): T[] {
+  const out = arr.slice();
+  for (let i = out.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [out[i], out[j]] = [out[j], out[i]];
+  }
+  return out;
+}
+
 /** Score a candidate for a slot; lower is better. */
 function scoreCandidate(
   person: Person,
@@ -103,7 +113,9 @@ function pickBest(
 ): Person | null {
   let best: Person | null = null;
   let bestScore = Infinity;
-  for (const p of candidates) {
+  // Iterate in random order so equally-scored candidates (common when counts
+  // are tied) are chosen at random rather than by the order staff were added.
+  for (const p of shuffle(candidates)) {
     const s = scoreCandidate(p, shift, date, state, byDate);
     if (s < bestScore) {
       best = p;
@@ -168,6 +180,7 @@ export function generateRota(
   };
 
   const byngStart = semester.byngStartDate || semester.startDate;
+  const byngEnd = semester.byngEndDate || semester.endDate;
 
   const blockShifts = SHIFTS.filter((r) => r.schedule === "weekly-block");
   const dailyShifts = SHIFTS.filter((r) => r.schedule !== "weekly-block");
@@ -219,6 +232,7 @@ export function generateRota(
       if (shift.schedule === "weekend" && !isWeekend(date)) continue;
       if (shift.schedule === "weekday" && isWeekend(date)) continue;
       if (shift.id === "BYNG" && daysBetween(byngStart, date) < 0) continue;
+      if (shift.id === "BYNG" && daysBetween(date, byngEnd) < 0) continue;
 
       const candidates = peopleByRole[shift.role].filter(
         (p) => isAvailable(p, date) && !usedToday.has(p.id),

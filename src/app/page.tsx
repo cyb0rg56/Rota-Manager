@@ -28,6 +28,7 @@ const EMPTY_SEMESTER: Semester = {
   startDate: "",
   endDate: "",
   byngStartDate: "",
+  byngEndDate: "",
 };
 
 const STORAGE_KEYS = {
@@ -130,6 +131,7 @@ export default function Home() {
       startDate: result.startDate,
       endDate: result.endDate,
       byngStartDate: result.byngStartDate,
+      byngEndDate: result.byngEndDate,
     }));
     setWarnings([]);
   };

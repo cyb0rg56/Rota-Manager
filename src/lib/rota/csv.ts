@@ -93,6 +93,7 @@ export interface ImportResult {
   startDate: string;
   endDate: string;
   byngStartDate: string;
+  byngEndDate: string;
 }
 
 let importIdCounter = 0;
@@ -109,7 +110,7 @@ function nextId(): string {
 export function parseRotaRows(rows: string[][]): ImportResult {
   const dataRows = rows.filter((r) => r.some((c) => (c ?? "").trim().length > 0));
   if (dataRows.length === 0) {
-    return { people: [], days: [], startDate: "", endDate: "", byngStartDate: "" };
+    return { people: [], days: [], startDate: "", endDate: "", byngStartDate: "", byngEndDate: "" };
   }
 
   const header = dataRows[0];
@@ -125,6 +126,7 @@ export function parseRotaRows(rows: string[][]): ImportResult {
   const rolesByName = new Map<string, Set<Role>>();
   const days: RotaDay[] = [];
   let byngStartDate = "";
+  let byngEndDate = "";
 
   function ensurePerson(name: string, role: Role): string {
     const key = name.trim();
@@ -161,6 +163,9 @@ export function parseRotaRows(rows: string[][]): ImportResult {
       if (shift.id === "BYNG" && (!byngStartDate || iso < byngStartDate)) {
         byngStartDate = iso;
       }
+      if (shift.id === "BYNG" && (!byngEndDate || iso > byngEndDate)) {
+        byngEndDate = iso;
+      }
     }
 
     days.push({ date: iso, assignments });
@@ -181,6 +186,7 @@ export function parseRotaRows(rows: string[][]): ImportResult {
     startDate: dates[0] ?? "",
     endDate: dates[dates.length - 1] ?? "",
     byngStartDate,
+    byngEndDate,
   };
 }
 

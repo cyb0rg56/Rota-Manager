@@ -24,12 +24,14 @@ export function RotaTable({ days, people, semester, onCellChange }: Props) {
 
   const byId = new Map(people.map((p) => [p.id, p]));
   const byngStart = semester.byngStartDate || semester.startDate;
+  const byngEnd = semester.byngEndDate || semester.endDate;
 
   const cellEnabled = (date: string, shiftId: ShiftId): boolean => {
     const shift = SHIFTS.find((r) => r.id === shiftId)!;
     if (shift.schedule === "weekend" && !isWeekend(date)) return false;
     if (shift.schedule === "weekday" && isWeekend(date)) return false;
     if (shift.id === "BYNG" && daysBetween(byngStart, date) < 0) return false;
+    if (shift.id === "BYNG" && daysBetween(date, byngEnd) < 0) return false;
     return true;
   };
 

@@ -56,6 +56,17 @@ export function SemesterForm({ semester, onChange }: Props) {
             BYNG cells stay blank before this date.
           </Text>
         </Box>
+        <Box>
+          <Text {...labelStyle()}>BYNG end date</Text>
+          <Input
+            type="date"
+            value={semester.byngEndDate}
+            onChange={(e) => set({ byngEndDate: e.target.value })}
+          />
+          <Text fontSize="xs" color="gray.600" mt={1}>
+            BYNG cells stay blank after this date.
+          </Text>
+        </Box>
       </Stack>
     </Box>
   );
