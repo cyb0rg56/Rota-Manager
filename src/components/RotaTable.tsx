@@ -1,14 +1,14 @@
 "use client";
 
 import { Badge, Box, Heading, Table, Text } from "@chakra-ui/react";
-import { ROLES, type Person, type RoleId, type RotaDay, type Semester } from "@/lib/types";
+import { SHIFTS, type Person, type ShiftId, type RotaDay, type Semester } from "@/lib/types";
 import { daysBetween, formatShort, isWeekend, isWithinRanges } from "@/lib/rota/dates";
 
 interface Props {
   days: RotaDay[];
   people: Person[];
   semester: Semester;
-  onCellChange: (date: string, roleId: RoleId, personId: string | null) => void;
+  onCellChange: (date: string, shiftId: ShiftId, personId: string | null) => void;
 }
 
 export function RotaTable({ days, people, semester, onCellChange }: Props) {
@@ -25,18 +25,18 @@ export function RotaTable({ days, people, semester, onCellChange }: Props) {
   const byId = new Map(people.map((p) => [p.id, p]));
   const byngStart = semester.byngStartDate || semester.startDate;
 
-  const cellEnabled = (date: string, roleId: RoleId): boolean => {
-    const role = ROLES.find((r) => r.id === roleId)!;
-    if (role.schedule === "weekend" && !isWeekend(date)) return false;
-    if (role.schedule === "weekday" && isWeekend(date)) return false;
-    if (role.id === "BYNG" && daysBetween(byngStart, date) < 0) return false;
+  const cellEnabled = (date: string, shiftId: ShiftId): boolean => {
+    const shift = SHIFTS.find((r) => r.id === shiftId)!;
+    if (shift.schedule === "weekend" && !isWeekend(date)) return false;
+    if (shift.schedule === "weekday" && isWeekend(date)) return false;
+    if (shift.id === "BYNG" && daysBetween(byngStart, date) < 0) return false;
     return true;
   };
 
-  const optionsFor = (date: string, roleId: RoleId, currentId: string | null): Person[] => {
-    const role = ROLES.find((r) => r.id === roleId)!;
+  const optionsFor = (date: string, shiftId: ShiftId, currentId: string | null): Person[] => {
+    const shift = SHIFTS.find((r) => r.id === shiftId)!;
     const list = people.filter(
-      (p) => p.pools.includes(role.pool) && !isWithinRanges(date, p.leave),
+      (p) => p.roles.includes(shift.role) && !isWithinRanges(date, p.leave),
     );
     // Ensure the currently-assigned person is always shown.
     if (currentId && !list.some((p) => p.id === currentId)) {
@@ -55,7 +55,7 @@ export function RotaTable({ days, people, semester, onCellChange }: Props) {
         <Table.Header>
           <Table.Row>
             <Table.ColumnHeader>Date</Table.ColumnHeader>
-            {ROLES.map((r) => (
+            {SHIFTS.map((r) => (
               <Table.ColumnHeader key={r.id}>{r.csvHeader}</Table.ColumnHeader>
             ))}
           </Table.Row>
@@ -77,25 +77,25 @@ export function RotaTable({ days, people, semester, onCellChange }: Props) {
                     </Badge>
                   )}
                 </Table.Cell>
-                {ROLES.map((role) => {
-                  const enabled = cellEnabled(day.date, role.id);
-                  const currentId = day.assignments[role.id];
+                {SHIFTS.map((shift) => {
+                  const enabled = cellEnabled(day.date, shift.id);
+                  const currentId = day.assignments[shift.id];
                   if (!enabled) {
                     return (
-                      <Table.Cell key={role.id} color="gray.400" textAlign="center">
+                      <Table.Cell key={shift.id} color="gray.400" textAlign="center">
                         —
                       </Table.Cell>
                     );
                   }
-                  const opts = optionsFor(day.date, role.id, currentId);
+                  const opts = optionsFor(day.date, shift.id, currentId);
                   return (
-                    <Table.Cell key={role.id}>
+                    <Table.Cell key={shift.id}>
                       <select
-                        aria-label={`${role.label} for ${formatShort(day.date)}`}
+                        aria-label={`${shift.label} for ${formatShort(day.date)}`}
                         className="rota-cell-select"
                         value={currentId ?? ""}
                         onChange={(e) =>
-                          onCellChange(day.date, role.id, e.target.value || null)
+                          onCellChange(day.date, shift.id, e.target.value || null)
                         }
                       >
                         <option value="">—</option>

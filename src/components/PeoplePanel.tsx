@@ -11,14 +11,14 @@ import {
   Stack,
   Text,
 } from "@chakra-ui/react";
-import { POOLS, type DateRange, type Person, type Pool } from "@/lib/types";
+import { ROLES, type DateRange, type Person, type Role } from "@/lib/types";
 
 interface Props {
   people: Person[];
   onChange: (people: Person[]) => void;
 }
 
-const POOL_LABELS: Record<Pool, string> = {
+const ROLE_LABELS: Record<Role, string> = {
   "South Kensington": "South Kensington",
   BYNG: "BYNG",
   Staff: "Staff",
@@ -46,7 +46,7 @@ export function PeoplePanel({ people, onChange }: Props) {
       id: makeId(),
       fullName,
       displayName: deriveDisplayName(fullName),
-      pools: ["South Kensington"],
+      roles: [],
       leave: [],
     };
     onChange([...people, person]);
@@ -58,12 +58,10 @@ export function PeoplePanel({ people, onChange }: Props) {
 
   const remove = (id: string) => onChange(people.filter((p) => p.id !== id));
 
-  const togglePool = (person: Person, pool: Pool) => {
-    const has = person.pools.includes(pool);
-    const pools = has
-      ? person.pools.filter((p) => p !== pool)
-      : [...person.pools, pool];
-    update(person.id, { pools });
+  const toggleRole = (person: Person, role: Role) => {
+    const has = person.roles.includes(role);
+    const roles = has ? [] : [role];
+    update(person.id, { roles });
   };
 
   const addLeave = (person: Person) =>
@@ -133,21 +131,21 @@ export function PeoplePanel({ people, onChange }: Props) {
             </HStack>
 
             <Text fontSize="xs" fontWeight={600} color="gray.600" mb={1}>
-              POOLS
+              ROLES
             </Text>
             <HStack gap={3} flexWrap="wrap" mb={2}>
-              {POOLS.map((pool) => {
-                const active = person.pools.includes(pool);
+              {ROLES.map((role) => {
+                const active = person.roles.includes(role);
                 return (
-                  <HStack key={pool} gap={1}>
+                  <HStack key={role} gap={1}>
                     <Badge
                       as="button"
-                      onClick={() => togglePool(person, pool)}
+                      onClick={() => toggleRole(person, role)}
                       colorPalette={active ? "blue" : "gray"}
                       variant={active ? "solid" : "outline"}
                       cursor="pointer"
                     >
-                      {POOL_LABELS[pool]}
+                      {ROLE_LABELS[role]}
                     </Badge>
                   </HStack>
                 );

@@ -1,15 +1,15 @@
 "use client";
 
 import { Box, Heading, Stack, Table, Text } from "@chakra-ui/react";
-import { POOLS, ROLES, type Person, type Pool, type RoleId, type RotaDay } from "@/lib/types";
+import { ROLES, SHIFTS, type Person, type Role, type ShiftId, type RotaDay } from "@/lib/types";
 
 interface Props {
   days: RotaDay[];
   people: Person[];
 }
 
-function rolesForPool(pool: Pool): RoleId[] {
-  return ROLES.filter((r) => r.pool === pool).map((r) => r.id);
+function shiftsForRole(role: Role): ShiftId[] {
+  return SHIFTS.filter((r) => r.role === role).map((r) => r.id);
 }
 
 export function StatsPanel({ days, people }: Props) {
@@ -21,42 +21,42 @@ export function StatsPanel({ days, people }: Props) {
         Distribution
       </Heading>
       <Stack gap={5}>
-        {POOLS.map((pool) => {
-          const members = people.filter((p) => p.pools.includes(pool));
+        {ROLES.map((role) => {
+          const members = people.filter((p) => p.roles.includes(role));
           if (members.length === 0) return null;
-          const poolRoles = rolesForPool(pool);
+          const roleShifts = shiftsForRole(role);
 
-          // Per person, per role counts within this pool.
-          const counts = new Map<string, Map<RoleId, number>>();
+          // Per person, per shift counts within this role.
+          const counts = new Map<string, Map<ShiftId, number>>();
           for (const m of members) counts.set(m.id, new Map());
           for (const day of days) {
-            for (const roleId of poolRoles) {
-              const id = day.assignments[roleId];
+            for (const shiftId of roleShifts) {
+              const id = day.assignments[shiftId];
               if (id && counts.has(id)) {
                 const m = counts.get(id)!;
-                m.set(roleId, (m.get(roleId) ?? 0) + 1);
+                m.set(shiftId, (m.get(shiftId) ?? 0) + 1);
               }
             }
           }
 
           const totalFor = (id: string) =>
-            poolRoles.reduce((sum, r) => sum + (counts.get(id)?.get(r) ?? 0), 0);
-          const poolTotal = members.reduce((s, m) => s + totalFor(m.id), 0);
-          const showBreakdown = pool === "South Kensington";
+            roleShifts.reduce((sum, r) => sum + (counts.get(id)?.get(r) ?? 0), 0);
+          const roleTotal = members.reduce((s, m) => s + totalFor(m.id), 0);
+          const showBreakdown = role === "South Kensington";
 
           return (
-            <Box key={pool}>
+            <Box key={role}>
               <Heading size="sm" mb={2}>
-                {pool}
+                {role}
               </Heading>
               <Table.Root size="sm" variant="outline">
                 <Table.Header>
                   <Table.Row>
                     <Table.ColumnHeader>Person</Table.ColumnHeader>
                     {showBreakdown &&
-                      poolRoles.map((r) => (
+                      roleShifts.map((r) => (
                         <Table.ColumnHeader key={r} textAlign="end">
-                          {ROLES.find((x) => x.id === r)!.csvHeader.replace("RLS ", "")}
+                          {SHIFTS.find((x) => x.id === r)!.csvHeader.replace("RLS ", "")}
                         </Table.ColumnHeader>
                       ))}
                     <Table.ColumnHeader textAlign="end">Total</Table.ColumnHeader>
@@ -66,12 +66,12 @@ export function StatsPanel({ days, people }: Props) {
                 <Table.Body>
                   {members.map((m) => {
                     const total = totalFor(m.id);
-                    const share = poolTotal > 0 ? (total / poolTotal) * 100 : 0;
+                    const share = roleTotal > 0 ? (total / roleTotal) * 100 : 0;
                     return (
                       <Table.Row key={m.id}>
                         <Table.Cell>{m.displayName}</Table.Cell>
                         {showBreakdown &&
-                          poolRoles.map((r) => (
+                          roleShifts.map((r) => (
                             <Table.Cell key={r} textAlign="end">
                               {counts.get(m.id)?.get(r) ?? 0}
                             </Table.Cell>

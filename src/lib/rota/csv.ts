@@ -2,10 +2,10 @@
 // Date,End Date,All-Day,RLS P-WE,RLS S-WE,RLS P-WD,RLS S-WD,BYNG,Staff,Director
 
 import {
-  ROLES,
+  SHIFTS,
   type Person,
-  type Pool,
-  type RoleDef,
+  type Role,
+  type ShiftDef,
   type RotaDay,
 } from "../types";
 import { addDays, formatLongEnGB, parseLongEnGB } from "./dates";
@@ -14,7 +14,7 @@ const CORE_HEADERS = [
   "Date",
   "End Date",
   "All-Day",
-  ...ROLES.map((r) => r.csvHeader),
+  ...SHIFTS.map((r) => r.csvHeader),
 ];
 
 function escapeField(value: string): string {
@@ -41,7 +41,7 @@ export function buildRotaRows({ days, displayNameById }: ExportInput): string[][
       formatLongEnGB(day.date),
       formatLongEnGB(addDays(day.date, 1)),
       "Y",
-      ...ROLES.map((r) => {
+      ...SHIFTS.map((r) => {
         const id = day.assignments[r.id];
         return id ? (displayNameById.get(id) ?? "") : "";
       }),
@@ -104,7 +104,7 @@ function nextId(): string {
 /**
  * Parse a grid of string cells (header row first) back into people (by display
  * name) and rota days. Shared by the CSV and Excel importers.
- * Display names appearing in a role column are added to that role's pool.
+ * Display names appearing in a shift column are added to that shift's role.
  */
 export function parseRotaRows(rows: string[][]): ImportResult {
   const dataRows = rows.filter((r) => r.some((c) => (c ?? "").trim().length > 0));
@@ -113,28 +113,28 @@ export function parseRotaRows(rows: string[][]): ImportResult {
   }
 
   const header = dataRows[0];
-  // Map each role to its column index by matching the exact header text.
-  const roleColumn = new Map<RoleDef, number>();
-  for (const role of ROLES) {
-    const idx = header.findIndex((h) => (h ?? "").trim() === role.csvHeader);
-    if (idx >= 0) roleColumn.set(role, idx);
+  // Map each shift to its column index by matching the exact header text.
+  const shiftColumn = new Map<ShiftDef, number>();
+  for (const shift of SHIFTS) {
+    const idx = header.findIndex((h) => (h ?? "").trim() === shift.csvHeader);
+    if (idx >= 0) shiftColumn.set(shift, idx);
   }
   const dateIdx = header.findIndex((h) => (h ?? "").trim() === "Date");
 
   const idByName = new Map<string, string>();
-  const poolsByName = new Map<string, Set<Pool>>();
+  const rolesByName = new Map<string, Set<Role>>();
   const days: RotaDay[] = [];
   let byngStartDate = "";
 
-  function ensurePerson(name: string, pool: Pool): string {
+  function ensurePerson(name: string, role: Role): string {
     const key = name.trim();
     let id = idByName.get(key);
     if (!id) {
       id = nextId();
       idByName.set(key, id);
-      poolsByName.set(key, new Set());
+      rolesByName.set(key, new Set());
     }
-    poolsByName.get(key)!.add(pool);
+    rolesByName.get(key)!.add(role);
     return id;
   }
 
@@ -153,12 +153,12 @@ export function parseRotaRows(rows: string[][]): ImportResult {
       Director: null,
     };
 
-    for (const [role, col] of roleColumn) {
+    for (const [shift, col] of shiftColumn) {
       const value = (fields[col] ?? "").trim();
       if (!value) continue;
-      const id = ensurePerson(value, role.pool);
-      assignments[role.id] = id;
-      if (role.id === "BYNG" && (!byngStartDate || iso < byngStartDate)) {
+      const id = ensurePerson(value, shift.role);
+      assignments[shift.id] = id;
+      if (shift.id === "BYNG" && (!byngStartDate || iso < byngStartDate)) {
         byngStartDate = iso;
       }
     }
@@ -170,7 +170,7 @@ export function parseRotaRows(rows: string[][]): ImportResult {
     id,
     fullName: name,
     displayName: name,
-    pools: [...(poolsByName.get(name) ?? new Set<Pool>())],
+    roles: [...(rolesByName.get(name) ?? new Set<Role>())],
     leave: [],
   }));
 

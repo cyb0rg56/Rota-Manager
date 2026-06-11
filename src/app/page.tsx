@@ -16,10 +16,11 @@ import { SemesterForm } from "@/components/SemesterForm";
 import { PeoplePanel } from "@/components/PeoplePanel";
 import { RotaTable } from "@/components/RotaTable";
 import { StatsPanel } from "@/components/StatsPanel";
-import type { Person, RoleId, RotaDay, Semester } from "@/lib/types";
+import type { Person, ShiftId, RotaDay, Semester } from "@/lib/types";
 import { generateRota } from "@/lib/rota/generate";
 import { exportToCsv, importFromCsv } from "@/lib/rota/csv";
 import { exportToXlsx, importFromXlsx } from "@/lib/rota/excel";
+import { exportToIcs } from "@/lib/rota/ics";
 import { usePersistentState } from "@/lib/usePersistentState";
 
 const EMPTY_SEMESTER: Semester = {
@@ -79,17 +80,17 @@ export default function Home() {
     setWarnings(result.warnings);
   };
 
-  const handleCellChange = (date: string, roleId: RoleId, personId: string | null) => {
+  const handleCellChange = (date: string, shiftId: ShiftId, personId: string | null) => {
     setDays((prev) =>
       prev.map((d) =>
         d.date === date
-          ? { ...d, assignments: { ...d.assignments, [roleId]: personId } }
+          ? { ...d, assignments: { ...d.assignments, [shiftId]: personId } }
           : d,
       ),
     );
   };
 
-  const handleExport = (format: "csv" | "xlsx") => {
+  const handleExport = (format: "csv" | "xlsx" | "ics") => {
     const displayNameById = new Map(people.map((p) => [p.id, p.displayName]));
     const baseName = semester.name || "rota";
     if (format === "xlsx") {
@@ -99,6 +100,14 @@ export default function Home() {
           type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         }),
         `${baseName}.xlsx`,
+      );
+      return;
+    }
+    if (format === "ics") {
+      const ics = exportToIcs({ days, displayNameById });
+      downloadBlob(
+        new Blob([ics], { type: "text/calendar;charset=utf-8;" }),
+        `${baseName}.ics`,
       );
       return;
     }
@@ -163,6 +172,9 @@ export default function Home() {
                   </Menu.Item>
                   <Menu.Item value="xlsx" onClick={() => handleExport("xlsx")}>
                     Excel (.xlsx)
+                  </Menu.Item>
+                  <Menu.Item value="ics" onClick={() => handleExport("ics")}>
+                    iCalendar (.ics)
                   </Menu.Item>
                 </Menu.Content>
               </Menu.Positioner>

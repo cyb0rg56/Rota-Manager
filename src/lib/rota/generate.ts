@@ -1,13 +1,13 @@
-// Rota generation: evenly distributes shifts across each role's pool while
+// Rota generation: evenly distributes shifts across each role's people while
 // honouring leave, same-day conflicts, and soft spacing preferences.
 
 import {
-  ROLES,
+  SHIFTS,
   type GenerationResult,
   type Person,
-  type Pool,
-  type RoleDef,
-  type RoleId,
+  type Role,
+  type ShiftDef,
+  type ShiftId,
   type RotaDay,
   type Semester,
 } from "../types";
@@ -22,7 +22,7 @@ import {
 
 // Soft-constraint penalties (in "shift" units, comparable to the fairness term).
 const BACK_TO_BACK_PENALTY = 1.5;
-const SAME_ROLE_ADJACENT_WEEKEND_PENALTY = 2.5;
+const SAME_SHIFT_ADJACENT_WEEKEND_PENALTY = 2.5;
 // Tie-break nudge favouring people who have not worked recently.
 const SPREAD_BONUS_PER_DAY = 0.02;
 const SPREAD_BONUS_CAP = 1.0;
@@ -33,18 +33,18 @@ const TIER_BALANCE_WEIGHT = 0.5;
 const TIER_BALANCE_CAP = 0.9;
 
 interface GenState {
-  /** Shift counts per pool, keyed by person id. */
-  counts: Record<Pool, Map<string, number>>;
-  /** Shift counts per role, keyed by person id (for primary/secondary balance). */
-  roleCounts: Map<RoleId, Map<string, number>>;
-  /** Most recent assigned date (any role) per person id. */
+  /** Shift counts per role, keyed by person id. */
+  counts: Record<Role, Map<string, number>>;
+  /** Shift counts per shift, keyed by person id (for primary/secondary balance). */
+  shiftCounts: Map<ShiftId, Map<string, number>>;
+  /** Most recent assigned date (any shift) per person id. */
   lastDate: Map<string, string>;
 }
 
 function emptyState(): GenState {
   return {
     counts: { "South Kensington": new Map(), BYNG: new Map(), Staff: new Map(), Director: new Map() },
-    roleCounts: new Map(),
+    shiftCounts: new Map(),
     lastDate: new Map(),
   };
 }
@@ -56,12 +56,12 @@ function isAvailable(person: Person, date: string): boolean {
 /** Score a candidate for a slot; lower is better. */
 function scoreCandidate(
   person: Person,
-  role: RoleDef,
+  shift: ShiftDef,
   date: string,
   state: GenState,
   byDate: Map<string, RotaDay>,
 ): number {
-  let score = state.counts[role.pool].get(person.id) ?? 0;
+  let score = state.counts[shift.role].get(person.id) ?? 0;
 
   const last = state.lastDate.get(person.id);
   if (last) {
@@ -71,19 +71,19 @@ function scoreCandidate(
     score -= bonus;
   }
 
-  // Avoid the same person holding the same weekend role on adjacent days.
+  // Avoid the same person holding the same weekend shift on adjacent days.
   if (isWeekend(date)) {
     const prev = byDate.get(addDays(date, -1));
-    if (prev && prev.assignments[role.id] === person.id) {
-      score += SAME_ROLE_ADJACENT_WEEKEND_PENALTY;
+    if (prev && prev.assignments[shift.id] === person.id) {
+      score += SAME_SHIFT_ADJACENT_WEEKEND_PENALTY;
     }
   }
 
   // Balance primary vs secondary within the same category: prefer the tier the
   // person has worked less. Capped so it never outweighs total fairness.
-  if (role.counterpart) {
-    const mine = state.roleCounts.get(role.id)?.get(person.id) ?? 0;
-    const theirs = state.roleCounts.get(role.counterpart)?.get(person.id) ?? 0;
+  if (shift.counterpart) {
+    const mine = state.shiftCounts.get(shift.id)?.get(person.id) ?? 0;
+    const theirs = state.shiftCounts.get(shift.counterpart)?.get(person.id) ?? 0;
     const imbalance = mine - theirs;
     score += Math.max(
       -TIER_BALANCE_CAP,
@@ -96,7 +96,7 @@ function scoreCandidate(
 
 function pickBest(
   candidates: Person[],
-  role: RoleDef,
+  shift: ShiftDef,
   date: string,
   state: GenState,
   byDate: Map<string, RotaDay>,
@@ -104,7 +104,7 @@ function pickBest(
   let best: Person | null = null;
   let bestScore = Infinity;
   for (const p of candidates) {
-    const s = scoreCandidate(p, role, date, state, byDate);
+    const s = scoreCandidate(p, shift, date, state, byDate);
     if (s < bestScore) {
       best = p;
       bestScore = s;
@@ -115,18 +115,18 @@ function pickBest(
 
 function recordAssignment(
   state: GenState,
-  pool: Pool,
-  roleId: RoleId,
+  role: Role,
+  shiftId: ShiftId,
   personId: string,
   date: string,
 ): void {
-  state.counts[pool].set(personId, (state.counts[pool].get(personId) ?? 0) + 1);
-  let roleMap = state.roleCounts.get(roleId);
-  if (!roleMap) {
-    roleMap = new Map();
-    state.roleCounts.set(roleId, roleMap);
+  state.counts[role].set(personId, (state.counts[role].get(personId) ?? 0) + 1);
+  let shiftMap = state.shiftCounts.get(shiftId);
+  if (!shiftMap) {
+    shiftMap = new Map();
+    state.shiftCounts.set(shiftId, shiftMap);
   }
-  roleMap.set(personId, (roleMap.get(personId) ?? 0) + 1);
+  shiftMap.set(personId, (shiftMap.get(personId) ?? 0) + 1);
   const prev = state.lastDate.get(personId);
   if (!prev || daysBetween(prev, date) > 0) {
     state.lastDate.set(personId, date);
@@ -160,19 +160,19 @@ export function generateRota(
   }
 
   const state = emptyState();
-  const peopleByPool: Record<Pool, Person[]> = {
-    "South Kensington": people.filter((p) => p.pools.includes("South Kensington")),
-    BYNG: people.filter((p) => p.pools.includes("BYNG")),
-    Staff: people.filter((p) => p.pools.includes("Staff")),
-    Director: people.filter((p) => p.pools.includes("Director")),
+  const peopleByRole: Record<Role, Person[]> = {
+    "South Kensington": people.filter((p) => p.roles.includes("South Kensington")),
+    BYNG: people.filter((p) => p.roles.includes("BYNG")),
+    Staff: people.filter((p) => p.roles.includes("Staff")),
+    Director: people.filter((p) => p.roles.includes("Director")),
   };
 
   const byngStart = semester.byngStartDate || semester.startDate;
 
-  const blockRoles = ROLES.filter((r) => r.schedule === "weekly-block");
-  const dailyRoles = ROLES.filter((r) => r.schedule !== "weekly-block");
+  const blockShifts = SHIFTS.filter((r) => r.schedule === "weekly-block");
+  const dailyShifts = SHIFTS.filter((r) => r.schedule !== "weekly-block");
 
-  // 1) Fill weekly-block roles (Director, Staff): one person per ISO week.
+  // 1) Fill weekly-block shifts (Director, Staff): one person per ISO week.
   const weeks = new Map<string, string[]>();
   for (const date of days) {
     const key = isoWeekKey(date);
@@ -181,72 +181,72 @@ export function generateRota(
     weeks.set(key, arr);
   }
 
-  for (const role of blockRoles) {
-    const pool = peopleByPool[role.pool];
+  for (const shift of blockShifts) {
+    const candidatesPool = peopleByRole[shift.role];
     for (const [, blockDays] of weeks) {
       const pickDate = blockDays[0];
       // Prefer people available for the whole block; otherwise most-available.
-      const fullyAvailable = pool.filter((p) => blockDays.every((d) => isAvailable(p, d)));
-      const candidates = fullyAvailable.length > 0 ? fullyAvailable : pool;
+      const fullyAvailable = candidatesPool.filter((p) => blockDays.every((d) => isAvailable(p, d)));
+      const candidates = fullyAvailable.length > 0 ? fullyAvailable : candidatesPool;
       if (candidates.length === 0) {
         warnings.push(
-          `No ${role.label} candidates for week starting ${blockDays[0]}.`,
+          `No ${shift.label} candidates for week starting ${blockDays[0]}.`,
         );
         continue;
       }
-      const chosen = pickBest(candidates, role, pickDate, state, byDate);
+      const chosen = pickBest(candidates, shift, pickDate, state, byDate);
       if (!chosen) continue;
-      recordAssignment(state, role.pool, role.id, chosen.id, pickDate);
+      recordAssignment(state, shift.role, shift.id, chosen.id, pickDate);
       for (const d of blockDays) {
         if (isAvailable(chosen, d)) {
-          byDate.get(d)!.assignments[role.id] = chosen.id;
+          byDate.get(d)!.assignments[shift.id] = chosen.id;
         }
       }
     }
   }
 
-  // 2) Fill daily roles chronologically, role by role within each day.
+  // 2) Fill daily shifts chronologically, shift by shift within each day.
   for (const date of days) {
     const day = byDate.get(date)!;
     const usedToday = new Set<string>();
-    // Seed with block-role assignments already made for this day.
-    for (const r of ROLES) {
+    // Seed with block-shift assignments already made for this day.
+    for (const r of SHIFTS) {
       const id = day.assignments[r.id];
       if (id) usedToday.add(id);
     }
 
-    for (const role of dailyRoles) {
-      if (role.schedule === "weekend" && !isWeekend(date)) continue;
-      if (role.schedule === "weekday" && isWeekend(date)) continue;
-      if (role.id === "BYNG" && daysBetween(byngStart, date) < 0) continue;
+    for (const shift of dailyShifts) {
+      if (shift.schedule === "weekend" && !isWeekend(date)) continue;
+      if (shift.schedule === "weekday" && isWeekend(date)) continue;
+      if (shift.id === "BYNG" && daysBetween(byngStart, date) < 0) continue;
 
-      const candidates = peopleByPool[role.pool].filter(
+      const candidates = peopleByRole[shift.role].filter(
         (p) => isAvailable(p, date) && !usedToday.has(p.id),
       );
       if (candidates.length === 0) {
-        warnings.push(`No ${role.label} candidate available on ${date}.`);
+        warnings.push(`No ${shift.label} candidate available on ${date}.`);
         continue;
       }
-      const chosen = pickBest(candidates, role, date, state, byDate);
+      const chosen = pickBest(candidates, shift, date, state, byDate);
       if (!chosen) continue;
-      day.assignments[role.id] = chosen.id;
+      day.assignments[shift.id] = chosen.id;
       usedToday.add(chosen.id);
-      recordAssignment(state, role.pool, role.id, chosen.id, date);
+      recordAssignment(state, shift.role, shift.id, chosen.id, date);
     }
   }
 
   return { days: days.map((d) => byDate.get(d)!), warnings };
 }
 
-/** Aggregate per-person shift counts within a pool from a set of rota days. */
-export function tallyByPool(
+/** Aggregate per-person shift counts within a role from a set of rota days. */
+export function tallyByRole(
   days: RotaDay[],
-  rolesForPool: RoleId[],
+  shiftsForRole: ShiftId[],
 ): Map<string, number> {
   const counts = new Map<string, number>();
   for (const day of days) {
-    for (const roleId of rolesForPool) {
-      const id = day.assignments[roleId];
+    for (const shiftId of shiftsForRole) {
+      const id = day.assignments[shiftId];
       if (id) counts.set(id, (counts.get(id) ?? 0) + 1);
     }
   }
