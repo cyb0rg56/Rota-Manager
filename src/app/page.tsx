@@ -7,6 +7,8 @@ import {
   Container,
   Heading,
   HStack,
+  Menu,
+  Portal,
   Stack,
   Text,
 } from "@chakra-ui/react";
@@ -17,6 +19,7 @@ import { StatsPanel } from "@/components/StatsPanel";
 import type { Person, RoleId, RotaDay, Semester } from "@/lib/types";
 import { generateRota } from "@/lib/rota/generate";
 import { exportToCsv, importFromCsv } from "@/lib/rota/csv";
+import { exportToXlsx, importFromXlsx } from "@/lib/rota/excel";
 import { usePersistentState } from "@/lib/usePersistentState";
 
 const EMPTY_SEMESTER: Semester = {
@@ -31,6 +34,15 @@ const STORAGE_KEYS = {
   people: "rota:people",
   days: "rota:days",
 } as const;
+
+function downloadBlob(blob: Blob, filename: string) {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  a.click();
+  URL.revokeObjectURL(url);
+}
 
 export default function Home() {
   const [semester, setSemester] = usePersistentState<Semester>(
@@ -77,21 +89,31 @@ export default function Home() {
     );
   };
 
-  const handleExport = () => {
+  const handleExport = (format: "csv" | "xlsx") => {
     const displayNameById = new Map(people.map((p) => [p.id, p.displayName]));
+    const baseName = semester.name || "rota";
+    if (format === "xlsx") {
+      const data = exportToXlsx({ days, displayNameById });
+      downloadBlob(
+        new Blob([data as BlobPart], {
+          type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        }),
+        `${baseName}.xlsx`,
+      );
+      return;
+    }
     const csv = exportToCsv({ days, displayNameById });
-    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `${semester.name || "rota"}.csv`;
-    a.click();
-    URL.revokeObjectURL(url);
+    downloadBlob(
+      new Blob([csv], { type: "text/csv;charset=utf-8;" }),
+      `${baseName}.csv`,
+    );
   };
 
   const handleImportFile = async (file: File) => {
-    const text = await file.text();
-    const result = importFromCsv(text);
+    const isExcel = /\.xlsx?$/i.test(file.name);
+    const result = isExcel
+      ? importFromXlsx(await file.arrayBuffer())
+      : importFromCsv(await file.text());
     setPeople(result.people);
     setDays(result.days);
     setSemester((prev) => ({
@@ -101,6 +123,12 @@ export default function Home() {
       byngStartDate: result.byngStartDate,
     }));
     setWarnings([]);
+  };
+
+  const openImportDialog = (accept: string) => {
+    if (!fileRef.current) return;
+    fileRef.current.accept = accept;
+    fileRef.current.click();
   };
 
   return (
@@ -121,21 +149,56 @@ export default function Home() {
           <Button colorPalette="green" onClick={handleGenerate}>
             Generate rota
           </Button>
-          <Button
-            variant="outline"
-            onClick={handleExport}
-            disabled={days.length === 0}
-          >
-            Export CSV
-          </Button>
-          <Button variant="outline" onClick={() => fileRef.current?.click()}>
-            Import CSV
-          </Button>
+          <Menu.Root>
+            <Menu.Trigger asChild>
+              <Button variant="outline" disabled={days.length === 0}>
+                Export ▾
+              </Button>
+            </Menu.Trigger>
+            <Portal>
+              <Menu.Positioner>
+                <Menu.Content>
+                  <Menu.Item value="csv" onClick={() => handleExport("csv")}>
+                    CSV (.csv)
+                  </Menu.Item>
+                  <Menu.Item value="xlsx" onClick={() => handleExport("xlsx")}>
+                    Excel (.xlsx)
+                  </Menu.Item>
+                </Menu.Content>
+              </Menu.Positioner>
+            </Portal>
+          </Menu.Root>
+          <Menu.Root>
+            <Menu.Trigger asChild>
+              <Button variant="outline">Import ▾</Button>
+            </Menu.Trigger>
+            <Portal>
+              <Menu.Positioner>
+                <Menu.Content>
+                  <Menu.Item
+                    value="csv"
+                    onClick={() => openImportDialog(".csv,text/csv")}
+                  >
+                    CSV (.csv)
+                  </Menu.Item>
+                  <Menu.Item
+                    value="xlsx"
+                    onClick={() =>
+                      openImportDialog(
+                        ".xlsx,.xls,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                      )
+                    }
+                  >
+                    Excel (.xlsx)
+                  </Menu.Item>
+                </Menu.Content>
+              </Menu.Positioner>
+            </Portal>
+          </Menu.Root>
           <input
             ref={fileRef}
             type="file"
-            accept=".csv,text/csv"
-            aria-label="Import rota CSV file"
+            aria-label="Import rota file"
             hidden
             onChange={(e) => {
               const file = e.target.files?.[0];

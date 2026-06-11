@@ -26,6 +26,12 @@ export interface RoleDef {
   csvHeader: string; // exact column header in the CSV
   pool: Pool;
   schedule: RoleSchedule;
+  /**
+   * Opposite tier in the same category (e.g. primary <-> secondary for the
+   * same weekday/weekend slot). Used to balance how often a person works the
+   * primary vs secondary role. Undefined for single-tier roles.
+   */
+  counterpart?: RoleId;
 }
 
 /**
@@ -34,10 +40,10 @@ export interface RoleDef {
  * we keep that exact header for round-trip fidelity.
  */
 export const ROLES: RoleDef[] = [
-  { id: "P-WE", label: "Primary Weekend", csvHeader: "RLS P-WE", pool: "South Kensington", schedule: "weekend" },
-  { id: "S-WE", label: "Secondary Weekend", csvHeader: "RLS S-WE", pool: "South Kensington", schedule: "weekend" },
-  { id: "P-WD", label: "Primary Weekday", csvHeader: "RLS P-WD", pool: "South Kensington", schedule: "weekday" },
-  { id: "S-WD", label: "Secondary Weekday", csvHeader: "RLS S-WD", pool: "South Kensington", schedule: "weekday" },
+  { id: "P-WE", label: "Primary Weekend", csvHeader: "RLS P-WE", pool: "South Kensington", schedule: "weekend", counterpart: "S-WE" },
+  { id: "S-WE", label: "Secondary Weekend", csvHeader: "RLS S-WE", pool: "South Kensington", schedule: "weekend", counterpart: "P-WE" },
+  { id: "P-WD", label: "Primary Weekday", csvHeader: "RLS P-WD", pool: "South Kensington", schedule: "weekday", counterpart: "S-WD" },
+  { id: "S-WD", label: "Secondary Weekday", csvHeader: "RLS S-WD", pool: "South Kensington", schedule: "weekday", counterpart: "P-WD" },
   { id: "BYNG", label: "Byng", csvHeader: "BYNG", pool: "BYNG", schedule: "daily" },
   { id: "Staff", label: "Staff On Call", csvHeader: "Staff", pool: "Staff", schedule: "weekly-block" },
   { id: "Director", label: "Director On Call", csvHeader: "Director", pool: "Director", schedule: "weekly-block" },

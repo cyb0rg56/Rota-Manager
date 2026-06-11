@@ -30,10 +30,14 @@ export interface ExportInput {
   displayNameById: Map<string, string>;
 }
 
-export function exportToCsv({ days, displayNameById }: ExportInput): string {
-  const lines: string[] = [CORE_HEADERS.join(",")];
+/**
+ * Build the rota as a grid of string cells (header row first), shared by the
+ * CSV and Excel exporters so both formats stay perfectly in sync.
+ */
+export function buildRotaRows({ days, displayNameById }: ExportInput): string[][] {
+  const rows: string[][] = [CORE_HEADERS.slice()];
   for (const day of days) {
-    const cells = [
+    rows.push([
       formatLongEnGB(day.date),
       formatLongEnGB(addDays(day.date, 1)),
       "Y",
@@ -41,10 +45,15 @@ export function exportToCsv({ days, displayNameById }: ExportInput): string {
         const id = day.assignments[r.id];
         return id ? (displayNameById.get(id) ?? "") : "";
       }),
-    ];
-    lines.push(cells.map(escapeField).join(","));
+    ]);
   }
-  return lines.join("\n");
+  return rows;
+}
+
+export function exportToCsv(input: ExportInput): string {
+  return buildRotaRows(input)
+    .map((row) => row.map(escapeField).join(","))
+    .join("\n");
 }
 
 /** Parse a single CSV line into fields, honouring quoted fields. */
@@ -93,23 +102,24 @@ function nextId(): string {
 }
 
 /**
- * Parse a CSV string back into people (by display name) and rota days.
+ * Parse a grid of string cells (header row first) back into people (by display
+ * name) and rota days. Shared by the CSV and Excel importers.
  * Display names appearing in a role column are added to that role's pool.
  */
-export function importFromCsv(text: string): ImportResult {
-  const rawLines = text.split(/\r?\n/).filter((l) => l.trim().length > 0);
-  if (rawLines.length === 0) {
+export function parseRotaRows(rows: string[][]): ImportResult {
+  const dataRows = rows.filter((r) => r.some((c) => (c ?? "").trim().length > 0));
+  if (dataRows.length === 0) {
     return { people: [], days: [], startDate: "", endDate: "", byngStartDate: "" };
   }
 
-  const header = parseCsvLine(rawLines[0]);
+  const header = dataRows[0];
   // Map each role to its column index by matching the exact header text.
   const roleColumn = new Map<RoleDef, number>();
   for (const role of ROLES) {
-    const idx = header.findIndex((h) => h.trim() === role.csvHeader);
+    const idx = header.findIndex((h) => (h ?? "").trim() === role.csvHeader);
     if (idx >= 0) roleColumn.set(role, idx);
   }
-  const dateIdx = header.findIndex((h) => h.trim() === "Date");
+  const dateIdx = header.findIndex((h) => (h ?? "").trim() === "Date");
 
   const idByName = new Map<string, string>();
   const poolsByName = new Map<string, Set<Pool>>();
@@ -128,8 +138,8 @@ export function importFromCsv(text: string): ImportResult {
     return id;
   }
 
-  for (let i = 1; i < rawLines.length; i++) {
-    const fields = parseCsvLine(rawLines[i]);
+  for (let i = 1; i < dataRows.length; i++) {
+    const fields = dataRows[i];
     const iso = dateIdx >= 0 ? parseLongEnGB(fields[dateIdx] ?? "") : "";
     if (!iso) continue; // skip stat/blank rows that have no valid date
 
@@ -172,4 +182,15 @@ export function importFromCsv(text: string): ImportResult {
     endDate: dates[dates.length - 1] ?? "",
     byngStartDate,
   };
+}
+
+/**
+ * Parse a CSV string back into people (by display name) and rota days.
+ */
+export function importFromCsv(text: string): ImportResult {
+  const rows = text
+    .split(/\r?\n/)
+    .filter((l) => l.trim().length > 0)
+    .map(parseCsvLine);
+  return parseRotaRows(rows);
 }

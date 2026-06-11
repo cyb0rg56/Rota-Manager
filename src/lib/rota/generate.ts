@@ -26,10 +26,17 @@ const SAME_ROLE_ADJACENT_WEEKEND_PENALTY = 2.5;
 // Tie-break nudge favouring people who have not worked recently.
 const SPREAD_BONUS_PER_DAY = 0.02;
 const SPREAD_BONUS_CAP = 1.0;
+// Nudge towards balancing primary vs secondary within the same category
+// (e.g. P-WD vs S-WD). Capped below 1.0 so it only breaks ties between people
+// with equal totals rather than overriding overall fairness.
+const TIER_BALANCE_WEIGHT = 0.5;
+const TIER_BALANCE_CAP = 0.9;
 
 interface GenState {
   /** Shift counts per pool, keyed by person id. */
   counts: Record<Pool, Map<string, number>>;
+  /** Shift counts per role, keyed by person id (for primary/secondary balance). */
+  roleCounts: Map<RoleId, Map<string, number>>;
   /** Most recent assigned date (any role) per person id. */
   lastDate: Map<string, string>;
 }
@@ -37,6 +44,7 @@ interface GenState {
 function emptyState(): GenState {
   return {
     counts: { "South Kensington": new Map(), BYNG: new Map(), Staff: new Map(), Director: new Map() },
+    roleCounts: new Map(),
     lastDate: new Map(),
   };
 }
@@ -71,6 +79,18 @@ function scoreCandidate(
     }
   }
 
+  // Balance primary vs secondary within the same category: prefer the tier the
+  // person has worked less. Capped so it never outweighs total fairness.
+  if (role.counterpart) {
+    const mine = state.roleCounts.get(role.id)?.get(person.id) ?? 0;
+    const theirs = state.roleCounts.get(role.counterpart)?.get(person.id) ?? 0;
+    const imbalance = mine - theirs;
+    score += Math.max(
+      -TIER_BALANCE_CAP,
+      Math.min(TIER_BALANCE_CAP, TIER_BALANCE_WEIGHT * imbalance),
+    );
+  }
+
   return score;
 }
 
@@ -96,10 +116,17 @@ function pickBest(
 function recordAssignment(
   state: GenState,
   pool: Pool,
+  roleId: RoleId,
   personId: string,
   date: string,
 ): void {
   state.counts[pool].set(personId, (state.counts[pool].get(personId) ?? 0) + 1);
+  let roleMap = state.roleCounts.get(roleId);
+  if (!roleMap) {
+    roleMap = new Map();
+    state.roleCounts.set(roleId, roleMap);
+  }
+  roleMap.set(personId, (roleMap.get(personId) ?? 0) + 1);
   const prev = state.lastDate.get(personId);
   if (!prev || daysBetween(prev, date) > 0) {
     state.lastDate.set(personId, date);
@@ -169,7 +196,7 @@ export function generateRota(
       }
       const chosen = pickBest(candidates, role, pickDate, state, byDate);
       if (!chosen) continue;
-      recordAssignment(state, role.pool, chosen.id, pickDate);
+      recordAssignment(state, role.pool, role.id, chosen.id, pickDate);
       for (const d of blockDays) {
         if (isAvailable(chosen, d)) {
           byDate.get(d)!.assignments[role.id] = chosen.id;
@@ -204,7 +231,7 @@ export function generateRota(
       if (!chosen) continue;
       day.assignments[role.id] = chosen.id;
       usedToday.add(chosen.id);
-      recordAssignment(state, role.pool, chosen.id, date);
+      recordAssignment(state, role.pool, role.id, chosen.id, date);
     }
   }
 
