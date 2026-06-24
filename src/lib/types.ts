@@ -91,6 +91,12 @@ export interface Semester {
    * Empty string means "same as semester end".
    */
   byngEndDate: string;
+  /**
+   * When true, the generator favours giving each person a continuous block of
+   * on-call days rather than spreading them out, while keeping fairness and
+   * leave as the priority (capped at 2 consecutive primary / 3 secondary days).
+   */
+  preferConsecutive: boolean;
 }
 
 /** A single day in the rota with its shift assignments (person ids or null). */

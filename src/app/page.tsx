@@ -29,6 +29,7 @@ const EMPTY_SEMESTER: Semester = {
   endDate: "",
   byngStartDate: "",
   byngEndDate: "",
+  preferConsecutive: false,
 };
 
 const STORAGE_KEYS = {
@@ -132,6 +133,7 @@ export default function Home() {
       endDate: result.endDate,
       byngStartDate: result.byngStartDate,
       byngEndDate: result.byngEndDate,
+      preferConsecutive: prev.preferConsecutive,
     }));
     setWarnings([]);
   };

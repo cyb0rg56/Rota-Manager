@@ -31,6 +31,14 @@ const SPREAD_BONUS_CAP = 1.0;
 // with equal totals rather than overriding overall fairness.
 const TIER_BALANCE_WEIGHT = 0.5;
 const TIER_BALANCE_CAP = 0.9;
+// When "prefer consecutive" is enabled: reward (rather than penalise) working the
+// day immediately after another shift, so people build up continuous blocks.
+const CONSECUTIVE_BONUS = 1.5;
+// Hard caps on how many days in a row a person may hold the same tier.
+const MAX_CONSEC_PRIMARY = 2;
+const MAX_CONSEC_SECONDARY = 3;
+
+type Tier = "primary" | "secondary";
 
 interface GenState {
   /** Shift counts per role, keyed by person id. */
@@ -39,6 +47,8 @@ interface GenState {
   shiftCounts: Map<ShiftId, Map<string, number>>;
   /** Most recent assigned date (any shift) per person id. */
   lastDate: Map<string, string>;
+  /** Current consecutive same-tier run per person id. */
+  tierRun: Map<string, { tier: Tier; lastDate: string; len: number }>;
 }
 
 function emptyState(): GenState {
@@ -46,11 +56,35 @@ function emptyState(): GenState {
     counts: { "South Kensington": new Map(), BYNG: new Map(), Staff: new Map(), Director: new Map() },
     shiftCounts: new Map(),
     lastDate: new Map(),
+    tierRun: new Map(),
   };
 }
 
 function isAvailable(person: Person, date: string): boolean {
   return !isWithinRanges(date, person.leave);
+}
+
+/** Classify a shift into its tier, or null for single-tier shifts. */
+function tierOf(shiftId: ShiftId): Tier | null {
+  if (shiftId.startsWith("P-")) return "primary";
+  if (shiftId.startsWith("S-")) return "secondary";
+  return null;
+}
+
+/** Would assigning this person to `tier` on `date` exceed the consecutive cap? */
+function exceedsTierCap(
+  state: GenState,
+  personId: string,
+  tier: Tier,
+  date: string,
+): boolean {
+  const run = state.tierRun.get(personId);
+  let prospective = 1;
+  if (run && run.tier === tier && daysBetween(run.lastDate, date) === 1) {
+    prospective = run.len + 1;
+  }
+  const cap = tier === "primary" ? MAX_CONSEC_PRIMARY : MAX_CONSEC_SECONDARY;
+  return prospective > cap;
 }
 
 /** Return a shuffled copy of the array (Fisher–Yates). */
@@ -70,19 +104,26 @@ function scoreCandidate(
   date: string,
   state: GenState,
   byDate: Map<string, RotaDay>,
+  preferConsecutive: boolean,
 ): number {
   let score = state.counts[shift.role].get(person.id) ?? 0;
 
   const last = state.lastDate.get(person.id);
   if (last) {
     const gap = daysBetween(last, date);
-    if (gap === 1) score += BACK_TO_BACK_PENALTY;
-    const bonus = Math.min(gap * SPREAD_BONUS_PER_DAY, SPREAD_BONUS_CAP);
-    score -= bonus;
+    if (preferConsecutive) {
+      // Reward continuing a block; skip the spacing nudges that spread people out.
+      if (gap === 1) score -= CONSECUTIVE_BONUS;
+    } else {
+      if (gap === 1) score += BACK_TO_BACK_PENALTY;
+      const bonus = Math.min(gap * SPREAD_BONUS_PER_DAY, SPREAD_BONUS_CAP);
+      score -= bonus;
+    }
   }
 
   // Avoid the same person holding the same weekend shift on adjacent days.
-  if (isWeekend(date)) {
+  // (Skipped when deliberately favouring consecutive blocks.)
+  if (!preferConsecutive && isWeekend(date)) {
     const prev = byDate.get(addDays(date, -1));
     if (prev && prev.assignments[shift.id] === person.id) {
       score += SAME_SHIFT_ADJACENT_WEEKEND_PENALTY;
@@ -110,13 +151,14 @@ function pickBest(
   date: string,
   state: GenState,
   byDate: Map<string, RotaDay>,
+  preferConsecutive: boolean,
 ): Person | null {
   let best: Person | null = null;
   let bestScore = Infinity;
   // Iterate in random order so equally-scored candidates (common when counts
   // are tied) are chosen at random rather than by the order staff were added.
   for (const p of shuffle(candidates)) {
-    const s = scoreCandidate(p, shift, date, state, byDate);
+    const s = scoreCandidate(p, shift, date, state, byDate, preferConsecutive);
     if (s < bestScore) {
       best = p;
       bestScore = s;
@@ -143,6 +185,16 @@ function recordAssignment(
   if (!prev || daysBetween(prev, date) > 0) {
     state.lastDate.set(personId, date);
   }
+
+  const tier = tierOf(shiftId);
+  if (tier) {
+    const run = state.tierRun.get(personId);
+    if (run && run.tier === tier && daysBetween(run.lastDate, date) === 1) {
+      state.tierRun.set(personId, { tier, lastDate: date, len: run.len + 1 });
+    } else {
+      state.tierRun.set(personId, { tier, lastDate: date, len: 1 });
+    }
+  }
 }
 
 export function generateRota(
@@ -150,6 +202,7 @@ export function generateRota(
   people: Person[],
 ): GenerationResult {
   const warnings: string[] = [];
+  const preferConsecutive = semester.preferConsecutive ?? false;
   const days = enumerateDays(semester.startDate, semester.endDate);
   if (days.length === 0) {
     return { days: [], warnings: ["Semester date range is empty or invalid."] };
@@ -207,7 +260,7 @@ export function generateRota(
         );
         continue;
       }
-      const chosen = pickBest(candidates, shift, pickDate, state, byDate);
+      const chosen = pickBest(candidates, shift, pickDate, state, byDate, preferConsecutive);
       if (!chosen) continue;
       recordAssignment(state, shift.role, shift.id, chosen.id, pickDate);
       for (const d of blockDays) {
@@ -241,7 +294,15 @@ export function generateRota(
         warnings.push(`No ${shift.label} candidate available on ${date}.`);
         continue;
       }
-      const chosen = pickBest(candidates, shift, date, state, byDate);
+      // When favouring consecutive blocks, avoid extending a person past the
+      // per-tier cap — but only while that still leaves someone to fill the slot.
+      let pool = candidates;
+      const tier = tierOf(shift.id);
+      if (preferConsecutive && tier) {
+        const capped = candidates.filter((p) => !exceedsTierCap(state, p.id, tier, date));
+        if (capped.length > 0) pool = capped;
+      }
+      const chosen = pickBest(pool, shift, date, state, byDate, preferConsecutive);
       if (!chosen) continue;
       day.assignments[shift.id] = chosen.id;
       usedToday.add(chosen.id);

@@ -1,6 +1,6 @@
 "use client";
 
-import { Box, Heading, Input, Stack, Text } from "@chakra-ui/react";
+import { Box, Checkbox, Heading, Input, Stack, Text } from "@chakra-ui/react";
 import type { Semester } from "@/lib/types";
 
 interface Props {
@@ -68,6 +68,23 @@ export function SemesterForm({ semester, onChange }: Props) {
           </Text>
         </Box>
       </Stack>
+      <Box mt={4}>
+        <Checkbox.Root
+          checked={semester.preferConsecutive}
+          onCheckedChange={(e) => set({ preferConsecutive: e.checked === true })}
+        >
+          <Checkbox.HiddenInput />
+          <Checkbox.Control>
+            <Checkbox.Indicator />
+          </Checkbox.Control>
+          <Checkbox.Label>Prefer consecutive shifts</Checkbox.Label>
+        </Checkbox.Root>
+        <Text fontSize="xs" color="gray.600" mt={1}>
+          Try to give each person a continuous block of on-call days instead of
+          spreading them out (at most 2 primary / 3 secondary days in a row).
+          Fairness and leave still take priority.
+        </Text>
+      </Box>
     </Box>
   );
 }
